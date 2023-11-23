@@ -28,3 +28,19 @@ This is how ChatGPT instruct me to use Postman for API testing:
 4. **Analyze the Response**:
     - After sending the request, Postman will display the server's response, including status code, headers, and body.
     - Review the response to ensure that it matches your expectations.
+
+
+
+- Billing POST test:
+
+![billing-post](./testing pics/billing-post.png)
+
+- Billing GET test:
+
+![billing-get](./testing pics/billing-get.png)
+
+- Billing PUT test:
+
+![billing-put](./testing pics/billing-put.png)
+
+- Billinf DELETE test:![billing-delete](./testing pics/billing-delete.png)
