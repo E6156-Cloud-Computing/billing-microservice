@@ -11,6 +11,15 @@ Python + Flask
 ## Usage
 Do `docker-compose up --build` to launch
 
+## FLASK API Introduction
+- GET /api/billing/apt/<apartment_id>
+    - Get billing information by apartment id
+- GET /api/billing/transaction/<transaction_id>
+    - Get billing information by transaction id
+- POST /api/billing/transaction/
+
+
+
 ## Test APIs
 I choose to use Postman for API testing
 This is how ChatGPT instruct me to use Postman for API testing:
