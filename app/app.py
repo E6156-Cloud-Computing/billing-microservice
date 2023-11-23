@@ -22,7 +22,7 @@ def transactions():
 def transaction(transaction_id):
     pass
 
-@app.route('/api/billing/transaction/apt/<string:apt_num>', methods=['GET', 'DELETE', 'POST'])
+@app.route('/api/billing/transaction/apt/<string:apt_num>', methods=['POST', 'GET', 'PUT', 'DELETE'])
 def insert_billing(apt_num):
     if request.method == 'POST':
         """Insert billing info into MongoDB(apt_id, rental price, rental start date, lease period), return the id of the inserted document"""
@@ -32,13 +32,15 @@ def insert_billing(apt_num):
             rental_price = data['rental_price']
             rental_start_time = data.get('rental_start_time', datetime.datetime.now())
             lease_period = data.get('lease_period', 12)
+            rentor_name = data.get('rentor_name', 'Anonymous')
 
             # Insert into MongoDB
             billing_info = {
                 "apartment_id": apt_num,
                 "rental_price": rental_price,
                 "rental_start_time": rental_start_time,
-                "lease_period": lease_period # in months
+                "lease_period": lease_period, # in months
+                'rentor_name': rentor_name
             }
             result = billing_collection.insert_one(billing_info)
 
@@ -60,7 +62,40 @@ def insert_billing(apt_num):
                 return jsonify({"error": "Billing info not found"}), 404
 
         except Exception as e:
-            # Handle errors
+            return jsonify({"error": str(e)}), 500
+    
+    elif request.method == 'PUT':
+        """Update billing info in MongoDB by apartment id"""
+        try:
+            # Parse the JSON data from request
+            data = request.json
+            update_data = {}
+
+            # Check if the apartment exists before updating
+            if not billing_collection.find_one({"apartment_id": apt_num}):
+                return jsonify({"error": "No billing info found for the given apartment number"}), 404
+
+            # Update fields if they exist in the request
+            if 'rental_price' in data:
+                update_data['rental_price'] = data['rental_price']
+            if 'rental_start_time' in data:
+                update_data['rental_start_time'] = data['rental_start_time']
+            if 'lease_period' in data:
+                update_data['lease_period'] = data['lease_period']
+            if 'rentor_name' in data:
+                update_data['rentor_name'] = data['rentor_name']
+
+            # Update the entry in MongoDB
+            result = billing_collection.update_one(
+                {"apartment_id": apt_num},
+                {"$set": update_data}
+            )
+            if result.matched_count == 0:
+                return jsonify({"error": "No billing info found for the given apartment number"}), 404
+
+            return jsonify({"message": "Billing info updated successfully"}), 200
+
+        except Exception as e:
             return jsonify({"error": str(e)}), 500
     
     elif request.method == 'DELETE':
@@ -75,9 +110,7 @@ def insert_billing(apt_num):
                 return jsonify({"error": "Billing info not found"}), 404
 
         except Exception as e:
-            # Handle errors
             return jsonify({"error": str(e)}), 500
-
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', debug=True)
