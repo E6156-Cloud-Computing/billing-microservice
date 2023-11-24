@@ -23,35 +23,47 @@ def generate_monthly_billing():
 
     for billing in billings:
         due_date = billing["next_due_date"]
-        payment_deadline = due_date + datetime.timedelta(days=7)
+        payment_deadline = due_date + datetime.timedelta(days=7) # rentor has 7 days to pay the bill
 
-        if billing_transactions.find_one({"apartment_id": billing["apartment_id"]}): # if there is an existing transaction, update it
-            if current_date > payment_deadline:
-                if billing_transactions.find_one({"apartment_id": billing["apartment_id"], "status": "paid"}):
-                    continue
-                else:
-                    billing_transactions.update_one(
-                        {"_id": new_billing_transaction["_id"]},
-                        {"$set": {"status": "violated"}}
-                    )
-        else:
-            new_billing_transaction = {
-                "apartment_id": billing["apartment_id"],
-                "rental_price": billing["rental_price"],
-                "due_date": due_date,
-                "payment_deadline": payment_deadline,
-                "status": "unpaid",  # Initially marked as unpaid
-                "rentor_name": billing["rentor_name"]
-            }
-            billing_transactions.insert_one(new_billing_transaction)
+        try:
+            if billing_transactions.find_one({"apartment_id": billing["apartment_id"]}): # if there is an existing transaction, update it
+                if current_date > due_date and current_date <= payment_deadline:
+                    if billing_transactions.find_one({"apartment_id": billing["apartment_id"], "status": "paid"}):
+                        continue
+                    else:
+                        billing_transactions.update_one(
+                            {"apartment_id": billing["apartment_id"]},
+                            {"$set": {"status": "unpaid"}}
+                        )
+                elif current_date > payment_deadline:
+                    if billing_transactions.find_one({"apartment_id": billing["apartment_id"], "status": "paid"}):
+                        # This means the lease has ended, and the entry is deleted from the database
+                        pass
+                    else:
+                        billing_transactions.update_one(
+                            {"_id": new_billing_transaction["_id"]},
+                            {"$set": {"status": "violated"}}
+                        )
+            else:
+                new_billing_transaction = {
+                    "apartment_id": billing["apartment_id"],
+                    "rental_price": billing["rental_price"],
+                    "due_date": due_date,
+                    "payment_deadline": payment_deadline,
+                    "status": "unpaid",  # Initially marked as unpaid
+                    "rentor_name": billing["rentor_name"]
+                }
+                billing_transactions.insert_one(new_billing_transaction)
+        except Exception as e:
+            print(e)
 
 # schedule the monthly generating job to run every day at midnight
 schedule.every().day.at("00:00").do(generate_monthly_billing) # schedule the job to run every day at midnight
 
-@app.route('/api/billing/history/<string:apt_num>', methods=['GET', 'POST'])
+@app.route('/api/billing/history/<string:apt_num>', methods=['GET', 'DELETE'])
 def history(apt_num):
     if request.method == 'GET':
-        """Get all transactions from MongoDB"""
+        """transaction history by apartment number"""
         try:
             transactions = billing_transactions.find({})
             transactions = [serialize_doc(transaction) for transaction in transactions]
@@ -59,11 +71,25 @@ def history(apt_num):
 
         except Exception as e:
             return jsonify({"error": str(e)}), 500
+    
+    elif request.method == 'DELETE':
+        """Delete transaction history from MongoDB by apartment id"""
+        try:
+            # Delete transaction history from MongoDB
+            billing_history_entry = billing_history.find_one({"apartment_id": apt_num})
+            if billing_history_entry:
+                billing_history.delete_many({"apartment_id": apt_num})
+                return jsonify({"message": "Transaction history deleted successfully"}), 200
+            else:
+                return jsonify({"error": "Transaction history not found"}), 404
 
-@app.route('/api/billing/transaction/<string:apt_num>', methods=['GET', 'PUT', 'DELETE'])
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+@app.route('/api/billing/transaction/<string:apt_num>', methods=['GET', 'PUT'])
 def transaction(apt_num):
     if request.method == 'GET':
-        """Get transaction info from MongoDB by apartment id"""
+        """Get billing status from MongoDB by apartment id"""
         try:
             # Get transaction info from MongoDB
             transaction = billing_transactions.find_one({"apartment_id": apt_num})
@@ -77,25 +103,26 @@ def transaction(apt_num):
             return jsonify({"error": str(e)}), 500
 
     elif request.method == "PUT":
-        """ Update the bill stuts to paid """
+        """ Update the bill stuts to be paid, and log the transaction history """
         try:
-            if (not billing_transactions.find_one({"apartment_id": apt_num})):
+            entry = billing_transactions.find_one({"apartment_id": apt_num})
+            if (not entry):
                 return jsonify({"error": "No transaction info found for the given apartment number"}), 404
             
-            entry = billing_transactions.find_one({"apartment_id": apt_num})
             if entry["status"] == "paid":
                 return jsonify({"error": "The bill has been paid"}), 400
             
             billing_info_entry = billing_collection.find_one({"apartment_id": apt_num})
             lease_end_date = billing_info_entry["rental_start_time"] + datetime.timedelta(days=30 * billing_info_entry["lease_period"])
+
             if datetime.datetime.now() > lease_end_date:
                 billing_transactions.delete_one({"apartment_id": apt_num})
-                return jsonify({"error": "The lease has ended"}), 400
+                return jsonify({"error": "The lease has ended, and the entry is deleted from the database"}), 400
             
-            if entry["due_date"] + datetime.timedelta(days=30) > lease_end_date:
-                next_due_date = lease_end_date
+            if entry["due_date"] + datetime.timedelta(days=31) > lease_end_date:
+                new_due_date = entry["due_date"]
             else:
-                next_due_date = entry["due_date"] + datetime.timedelta(days=30)
+                new_due_date = entry["due_date"] + datetime.timedelta(days=30)
 
             # Update the entry in billing_transactions
             billing_transactions.update_one(
@@ -106,8 +133,17 @@ def transaction(apt_num):
             # Update the entry in billing_collection
             result = billing_collection.update_one(
                 {"apartment_id": apt_num},
-                {"$set": {"next_due_date": next_due_date}}
+                {"$set": {"next_due_date": new_due_date}}
             )
+
+            # Log the transaction history
+            billing_history_entry = {
+                "apartment_id": apt_num,
+                "rental_price": entry["rental_price"],
+                "rentor_name": entry["rentor_name"],
+                "payment_date": datetime.datetime.now()
+            }
+            billing_history.insert_one(billing_history_entry)
 
             if result.matched_count == 0:
                 return jsonify({"error": "No transaction info found for the given apartment number"}), 404
@@ -128,7 +164,7 @@ def insert_billing(apt_num):
             rental_start_time = data.get('rental_start_time', datetime.datetime.now())
             lease_period = data.get('lease_period', 12)
             rentor_name = data.get('rentor_name', 'Anonymous')
-            next_due_date = rental_start_time + datetime.timedelta(days=30)
+            next_due_date = rental_start_time
 
             # Insert into MongoDB
             billing_info = {
@@ -196,12 +232,17 @@ def insert_billing(apt_num):
             return jsonify({"error": str(e)}), 500
     
     elif request.method == 'DELETE':
-        """Delete billing info from MongoDB by apartment id"""
+        """ Delete billing info from MongoDB by apartment id """
         try:
             # Delete billing info from MongoDB
             billing_info = billing_collection.find_one({"apartment_id": apt_num})
             if billing_info:
                 billing_collection.delete_one({"apartment_id": apt_num})
+                if billing_history.find_one({"apartment_id": apt_num}):
+                    # delete all the history of the apartment
+                    billing_history.delete_many({"apartment_id": apt_num})
+                if billing_transactions.find_one({"apartment_id": apt_num}):
+                    billing_transactions.delete_one({"apartment_id": apt_num})
                 return jsonify({"message": "Billing info deleted successfully"}), 200
             else:
                 return jsonify({"error": "Billing info not found"}), 404

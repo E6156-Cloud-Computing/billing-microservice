@@ -12,11 +12,6 @@ Python + Flask
 Do `docker-compose up --build` to launch
 
 ## FLASK API Introduction
-- GET /api/billing/apt/<apartment_id>
-    - Get billing information by apartment id
-- GET /api/billing/transaction/<transaction_id>
-    - Get billing information by transaction id
-- POST /api/billing/transaction/
 
 
 
