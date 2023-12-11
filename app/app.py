@@ -1,3 +1,6 @@
+import boto3
+from botocore.exceptions import ClientError
+import json
 import datetime
 import schedule
 from flask import Flask, jsonify, request, Response
@@ -15,6 +18,27 @@ db = client.rentaldb
 billing_collection = db.billing # store billing info
 billing_transactions = db.transactions # store transaction info by apt_id
 billing_history = db.history # store transaction history
+
+def invoke_lambda_email_service(recipient_email, recipient_name, due_date, balance):
+    """Invoke the lambda function to send email to the rentor"""
+    ses_client = boto3.client('ses')
+    payload = {
+        'recipient_email': recipient_email,
+        'recipient_name': recipient_name,
+        'due_date': due_date,
+        'balance': balance
+    }
+    try:
+        response = ses_client.invoke(
+            FunctionName='arn:aws:lambda:us-east-1:281091205399:function:lambda_email_sender',
+            InvocationType='RequestResponse',
+            Payload=json.dumps(payload)
+        )
+    except ClientError as e:
+        print(e.response['Error']['Message'])
+    else:
+        print("Email sent! Message ID:"),
+        print(response['MessageId'])
 
 def generate_monthly_billing():
     """Generate monthly billing for each apartment based on the billing info stored in the billing_collection, this function will be scheduled to be called every day"""
@@ -35,6 +59,8 @@ def generate_monthly_billing():
                             {"apartment_id": billing["apartment_id"]},
                             {"$set": {"status": "unpaid"}}
                         )
+                        invoke_lambda_email_service(billing["email"], billing["rentor_name"], due_date.strftime("%m/%d/%Y"), str(billing["rental_price"]))
+                        # send email to the rentor via lambda function
                 elif current_date > payment_deadline:
                     if billing_transactions.find_one({"apartment_id": billing["apartment_id"], "status": "paid"}):
                         # This means the lease has ended, and the entry is deleted from the database
@@ -164,6 +190,7 @@ def insert_billing(apt_num):
             rental_start_time = data.get('rental_start_time', datetime.datetime.now())
             lease_period = data.get('lease_period', 12)
             rentor_name = data.get('rentor_name', 'Anonymous')
+            email = data.get('email') 
             next_due_date = rental_start_time
 
             # Insert into MongoDB
@@ -173,7 +200,8 @@ def insert_billing(apt_num):
                 "rental_start_time": rental_start_time,
                 "next_due_date": next_due_date, # next due date is 30 days after rental start date
                 "lease_period": lease_period, # in months
-                "rentor_name": rentor_name
+                "rentor_name": rentor_name,
+                "email": email
             }
             result = billing_collection.insert_one(billing_info)
 
