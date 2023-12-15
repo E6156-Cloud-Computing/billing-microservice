@@ -3,6 +3,7 @@ from botocore.exceptions import ClientError
 import json
 import datetime
 import schedule
+import asyncio
 from flask import Flask, jsonify, request, Response
 from pymongo import MongoClient
 from bson import ObjectId
@@ -15,7 +16,7 @@ def serialize_doc(doc):
 app = Flask(__name__)
 client = MongoClient("mongodb://root:6156_project@mongodb:27017/")
 db = client.rentaldb
-billing_collection = db.billing # store billing info
+billing_collection = db.billing # store billing info by apt_id or email
 billing_transactions = db.transactions # store transaction info by apt_id
 billing_history = db.history # store transaction history
 
@@ -77,7 +78,8 @@ def generate_monthly_billing():
                     "due_date": due_date,
                     "payment_deadline": payment_deadline,
                     "status": "unpaid",  # Initially marked as unpaid
-                    "rentor_name": billing["rentor_name"]
+                    "rentor_name": billing["rentor_name"],
+                    "email": billing["email"]
                 }
                 billing_transactions.insert_one(new_billing_transaction)
         except Exception as e:
@@ -86,13 +88,17 @@ def generate_monthly_billing():
 # schedule the monthly generating job to run every day at midnight
 schedule.every().day.at("00:00").do(generate_monthly_billing) # schedule the job to run every day at midnight
 
-@app.route('/api/billing/history/<string:apt_num>', methods=['GET', 'DELETE'])
-def history(apt_num):
+@app.route('/api/billing/history/', methods=['GET', 'DELETE'])
+def billing_history_api():
+    """ Search transaction history by user email, and delete transaction history by email"""
     if request.method == 'GET':
         """transaction history by apartment number"""
         try:
-            transactions = billing_transactions.find({})
-            transactions = [serialize_doc(transaction) for transaction in transactions]
+            data = request.json
+            start_num = data.get('start_num', 0)
+            end_num = data.get('end_num', 10)
+            email = data.get('email')
+            transactions = billing_history.find({"email": email}).sort("payment_date", -1).skip(start_num).limit(end_num - start_num)
             return jsonify(transactions), 200
 
         except Exception as e:
@@ -102,9 +108,10 @@ def history(apt_num):
         """Delete transaction history from MongoDB by apartment id"""
         try:
             # Delete transaction history from MongoDB
-            billing_history_entry = billing_history.find_one({"apartment_id": apt_num})
+            email = request.json.get('email')
+            billing_history_entry = billing_history.find_one({"email": email})
             if billing_history_entry:
-                billing_history.delete_many({"apartment_id": apt_num})
+                billing_history.delete_many({"email": email})
                 return jsonify({"message": "Transaction history deleted successfully"}), 200
             else:
                 return jsonify({"error": "Transaction history not found"}), 404
@@ -112,8 +119,8 @@ def history(apt_num):
         except Exception as e:
             return jsonify({"error": str(e)}), 500
 
-@app.route('/api/billing/transaction/<string:apt_num>', methods=['GET', 'PUT'])
-def transaction(apt_num):
+@app.route('/api/billing/pay_rent/<string:apt_num>', methods=['GET', 'PUT'])
+def transaction_api(apt_num):
     if request.method == 'GET':
         """Get billing status from MongoDB by apartment id"""
         try:
@@ -167,7 +174,8 @@ def transaction(apt_num):
                 "apartment_id": apt_num,
                 "rental_price": entry["rental_price"],
                 "rentor_name": entry["rentor_name"],
-                "payment_date": datetime.datetime.now()
+                "payment_date": datetime.datetime.now(),
+                "email": entry["email"]
             }
             billing_history.insert_one(billing_history_entry)
 
@@ -180,7 +188,8 @@ def transaction(apt_num):
 
 
 @app.route('/api/billing/apt/<string:apt_num>', methods=['POST', 'GET', 'PUT', 'DELETE'])
-def insert_billing(apt_num):
+def billing_info_api(apt_num):
+    """ This function is used for initial billing information insertion, update billing info, and delete billing info"""
     if request.method == 'POST':
         """Insert billing info into MongoDB(apt_id, rental price, rental start date, lease period), return the id of the inserted document"""
         try:
@@ -277,6 +286,20 @@ def insert_billing(apt_num):
 
         except Exception as e:
             return jsonify({"error": str(e)}), 500
+
+@app.route('/api/billing/get_balance/', methods=['GET'])
+async def get_billing_info_by_email():
+    try:
+        # Get current balance from MongoDB
+        email = request.args.get('email')
+        unpaid_transactions = billing_transactions.find({"email": email, "status": "unpaid"}) 
+        if unpaid_transactions:
+            balance = sum([transaction["rental_price"] for transaction in unpaid_transactions])
+            return jsonify({"balance": balance}), 200
+        else:
+            return jsonify({"balance": 0}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', debug=True)
