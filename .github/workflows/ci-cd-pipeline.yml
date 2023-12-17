@@ -12,36 +12,30 @@ jobs:
     steps:
     - name: Checkout Repository
       uses: actions/checkout@v2
-
-    - name: Configure AWS Credentials
-      uses: aws-actions/configure-aws-credentials@v1
+      
+    # Building and pushing to Docker Hub:
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v1
       with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: us-east-1
+        username: ${{ secrets.DOCKERHUB_USERNAME }} #TODO
+        password: ${{ secrets.DOCKERHUB_TOKEN }} #TODO
 
-    - name: Log in to Amazon ECR
-      id: login-ecr
-      uses: aws-actions/amazon-ecr-login@v1
-
-    - name: Build, tag, and push image to Amazon ECR
-      env:
-        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-        ECR_REPOSITORY: my-ecr-repo
-        IMAGE_TAG: latest
+    - name: Build and Push Docker Image to Docker Hub
       run: |
-        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
-        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+        docker build -t my-docker-hub-username/my-app:latest . #TODO Docker image details
+        docker push my-docker-hub-username/my-app:latest #TODO Docker image details
 
-  deploy:
-    needs: build-and-push
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-    steps:
-    - name: Executing remote SSH commands using SSH key
-      uses: easingthemes/ssh-deploy@v2.1.5
-      with:
-        SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
-        REMOTE_HOST: ${{ secrets.EC2_HOST }}
-        REMOTE_USER: ${{ secrets.EC2_USER }}
-        ARGS: "docker pull $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG && docker stop my-container || true && docker run -d --name my-container $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+    # Deploy using AWS CodeDeploy
+    - name: Deploy to AWS CodeDeploy
+      run: |
+        aws deploy create-deployment \
+          --application-name YourCodeDeployApplicationName \ #TODO
+          --deployment-config-name CodeDeployDefault.OneAtATime \
+          --deployment-group-name YourDeploymentGroupName \ #TODO
+          --description "GitHub Actions deployment" \
+          --github-location repository=${{ github.repository }},commitId=${{ github.sha }}
+      env:
+        # TODO AWS Credentials: Store your AWS Access Key ID and Secret Access Key as GitHub secrets.
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        AWS_REGION: 'your-aws-region' # TODO 
