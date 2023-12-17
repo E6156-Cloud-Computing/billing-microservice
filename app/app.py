@@ -7,6 +7,7 @@ import asyncio
 from flask import Flask, jsonify, request, Response
 from pymongo import MongoClient
 from bson import ObjectId
+from flask_cors import CORS
 
 def serialize_doc(doc):
     if "_id" in doc:
@@ -302,4 +303,5 @@ async def get_billing_info_by_email():
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', debug=True)
+    CORS(app)
+    app.run(host='0.0.0.0', debug=True, ssl_context='adhoc')
