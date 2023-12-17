@@ -61,4 +61,3 @@ jobs:
     #   run: |
     #     ssh -i my_private_key.pem -o "StrictHostKeyChecking=no" ec2-user@54.167.236.204 && cd /home/ec2-user/billing-microservice && docker-compose up --build
     #     echo "Deploying the app to EC2"
-
