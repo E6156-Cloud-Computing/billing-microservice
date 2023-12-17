@@ -20,7 +20,8 @@ jobs:
 
     - name: Build Docker Image
       run: |
-        docker build -t your-app-name .
+        # docker build -t your-app-name .
+        echo "Build Docker Image"
 
     - name: Deploy to AWS EC2
       run: |
