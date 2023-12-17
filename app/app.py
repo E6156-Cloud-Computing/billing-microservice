@@ -195,6 +195,9 @@ def billing_info_api(apt_num):
         """Insert billing info into MongoDB(apt_id, rental price, rental start date, lease period), return the id of the inserted document"""
         try:
             # Parse the JSON data from request
+            entry = billing_collection.find_one({"apartment_id": apt_num})
+            if entry:
+                return jsonify({"warning": f"Billing info of {apt_num} already exists, please use PUT method to update"}), 400
             data = request.json
             rental_price = data['rental_price']
             rental_start_time = data.get('rental_start_time', datetime.datetime.now())
