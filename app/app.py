@@ -283,7 +283,7 @@ def billing_info_api(apt_num):
                     # delete all the history of the apartment
                     billing_history.delete_many({"apartment_id": apt_num})
                 if billing_transactions.find_one({"apartment_id": apt_num}):
-                    billing_transactions.delete_one({"apartment_id": apt_num})
+                    billing_transactions.delete_many({"apartment_id": apt_num})
                 return jsonify({"message": "Billing info deleted successfully"}), 200
             else:
                 return jsonify({"error": "Billing info not found"}), 404
