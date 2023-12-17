@@ -18,14 +18,19 @@ jobs:
       run: |
         echo "Building and testing the app"
 
-    - name: Build Docker Image
+    - name: Set up ssh key
       run: |
-        # docker build -t your-app-name .
-        echo "Build Docker Image"
+        echo "${{ secrets.EC2_KEY }}" | base64 --decode > my_private_key.pem
+        chmod 600 my_private_key.pem
+
+    # - name: Build Docker Image
+    #   run: |
+    #     # docker build -t your-app-name .
+    #     echo "Build Docker Image"
 
     - name: Deploy to AWS EC2
       run: |
-        ssh -i /Users/michael/.keys/ec2/6156-ec2-key ec2-user@54.167.236.204 && docker-compose up --build
+        ssh -i my_private_key.pem -o "StrictHostKeyChecking=no" ec2-user@54.167.236.204 && cd /home/ec2-user/billing-microservice && docker-compose up --build
         echo "Deploying the app to EC2"
 
 
