@@ -97,7 +97,7 @@ def billing_history_api():
         try:
             data = request.json
             start_num = data.get('start_num', 0)
-            end_num = data.get('end_num', 10)
+            end_num = data.get('end_num', 4)
             email = data.get('email')
             transactions = billing_history.find({"email": email}).sort("payment_date", -1).skip(start_num).limit(end_num - start_num)
             return jsonify(transactions), 200
@@ -131,7 +131,7 @@ def transaction_api(apt_num):
                 transaction = serialize_doc(transaction)
                 return jsonify(transaction), 200
             else:
-                return jsonify({"error": "Transaction info not found"}), 404
+                return jsonify({"error": f"Bill of {apt_num} not found"}), 404
 
         except Exception as e:
             return jsonify({"error": str(e)}), 500
@@ -141,7 +141,7 @@ def transaction_api(apt_num):
         try:
             entry = billing_transactions.find_one({"apartment_id": apt_num})
             if (not entry):
-                return jsonify({"error": "No transaction info found for the given apartment number"}), 404
+                return jsonify({"error": f"No transaction info found for the apartment {apt_num}"}), 404
             
             if entry["status"] == "paid":
                 return jsonify({"error": "The bill has been paid"}), 400
