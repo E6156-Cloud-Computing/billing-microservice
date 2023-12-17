@@ -14,66 +14,51 @@ jobs:
     steps:
     - uses: actions/checkout@v2
 
-    - name: Build and Test
+    - name: Build docker image
       run: |
-        echo "Building and testing the app"
+        docker-compose build
+    
+    - name: Login to Docker Registry
+      run: |
+        echo ${{ secrets.DOCKER_PASSWORD }} | docker login -u ${{ secrets.DOCKER_USERNAME }} --password-stdin
+    
+    - name: Push Docker image
+      run: |
+        docker-compose push
 
-    - name: Set up ssh key
-      run: |
-        echo "${{ secrets.EC2_KEY }}" > my_private_key.pem
-        chmod 600 my_private_key.pem
+    - name: Copy files to EC2 instance
+      uses: appleboy/scp-action@master
+      with:
+        host: 54.167.236.204
+        username: ec2-user
+        key: ${{ secrets.EC2_KEY }}
+        source: "."
+        target: "~/dockers"
+    
+    - name: Deploy on EC2 instance
+      uses: appleboy/ssh-action@master
+      with:
+        host: 54.167.236.204
+        username: ec2-user
+        key: ${{ secrets.EC2_KEY }}
+        script: |
+          cd ~/dockers
+          docker-compose down
+          docker-compose pull
+          docker-compose up -d
+
+    # - name: Set up ssh key
+    #   run: |
+    #     echo "${{ secrets.EC2_KEY }}" > my_private_key.pem
+    #     chmod 600 my_private_key.pem
 
     # - name: Build Docker Image
     #   run: |
     #     # docker build -t your-app-name .
     #     echo "Build Docker Image"
 
-    - name: Deploy to AWS EC2
-      run: |
-        ssh -i my_private_key.pem -o "StrictHostKeyChecking=no" ec2-user@54.167.236.204 && cd /home/ec2-user/billing-microservice && docker-compose up --build
-        echo "Deploying the app to EC2"
+    # - name: Deploy to AWS EC2
+    #   run: |
+    #     ssh -i my_private_key.pem -o "StrictHostKeyChecking=no" ec2-user@54.167.236.204 && cd /home/ec2-user/billing-microservice && docker-compose up --build
+    #     echo "Deploying the app to EC2"
 
-
-
-
-# name: CI/CD Pipeline for Billing Microservice
-
-# on:
-#   push:
-#     branches: [ main ]
-#   pull_request:
-#     branches: [ main ]
-
-# jobs:
-#   build-and-push:
-#     runs-on: ubuntu-latest
-#     steps:
-#     - name: Checkout Repository
-#       uses: actions/checkout@v2
-      
-#     # Building and pushing to Docker Hub:
-#     - name: Log in to Docker Hub
-#       uses: docker/login-action@v1
-#       with:
-#         username: ${{ secrets.DOCKERHUB_USERNAME }} #TODO
-#         password: ${{ secrets.DOCKERHUB_TOKEN }} #TODO
-
-#     - name: Build and Push Docker Image to Docker Hub
-#       run: |
-#         docker build -t my-docker-hub-username/my-app:latest . #TODO Docker image details
-#         docker push my-docker-hub-username/my-app:latest #TODO Docker image details
-
-#     # Deploy using AWS CodeDeploy
-#     - name: Deploy to AWS CodeDeploy
-#       run: |
-#         aws deploy create-deployment \
-#           --application-name YourCodeDeployApplicationName \ #TODO
-#           --deployment-config-name CodeDeployDefault.OneAtATime \
-#           --deployment-group-name YourDeploymentGroupName \ #TODO
-#           --description "GitHub Actions deployment" \
-#           --github-location repository=${{ github.repository }},commitId=${{ github.sha }}
-#       env:
-#         # TODO AWS Credentials: Store your AWS Access Key ID and Secret Access Key as GitHub secrets.
-#         AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-#         AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-#         AWS_REGION: 'your-aws-region' # TODO 
