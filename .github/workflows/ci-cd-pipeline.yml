@@ -43,8 +43,8 @@ jobs:
         script: |
           cd ~/dockers
           docker-compose down
-          docker-compose pull
-          docker-compose up -d
+          # docker-compose pull
+          docker-compose up --build
 
     # - name: Set up ssh key
     #   run: |
