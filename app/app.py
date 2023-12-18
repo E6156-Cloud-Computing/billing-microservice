@@ -8,6 +8,7 @@ from flask import Flask, jsonify, request, Response
 from pymongo import MongoClient
 from bson import ObjectId
 from flask_cors import CORS
+from keys import aws_access_key_id0, aws_secret_access_key0
 
 def serialize_doc(doc):
     if "_id" in doc:
@@ -23,15 +24,23 @@ billing_history = db.history # store transaction history
 
 def invoke_lambda_email_service(recipient_email, recipient_name, due_date, balance):
     """Invoke the lambda function to send email to the rentor"""
-    ses_client = boto3.client('ses')
+    # Create a Lambda client
+    lambda_client = boto3.client(
+        'lambda', 
+        aws_access_key_id = aws_access_key_id0,
+        aws_secret_access_key = aws_secret_access_key0,
+        region_name='us-east-1')
+
+    # Define the payload
     payload = {
         'recipient_email': recipient_email,
         'recipient_name': recipient_name,
-        'due_date': due_date,
+        'due_date': str(due_date),
         'balance': balance
     }
+    # Invoke the Lambda function
     try:
-        response = ses_client.invoke(
+        response = lambda_client.invoke(
             FunctionName='arn:aws:lambda:us-east-1:281091205399:function:lambda_email_sender',
             InvocationType='RequestResponse',
             Payload=json.dumps(payload)
@@ -39,8 +48,7 @@ def invoke_lambda_email_service(recipient_email, recipient_name, due_date, balan
     except ClientError as e:
         print(e.response['Error']['Message'])
     else:
-        print("Email sent! Message ID:"),
-        print(response['MessageId'])
+        print("Email sent!"),
 
 def generate_monthly_billing():
     """Generate monthly billing for each apartment based on the billing info stored in the billing_collection, this function will be scheduled to be called every day"""
@@ -306,5 +314,6 @@ async def get_billing_info_by_email():
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
-    CORS(app)
-    app.run(host='0.0.0.0', debug=True, ssl_context='adhoc')
+    # CORS(app)
+    # app.run(host='0.0.0.0', debug=True, ssl_context='adhoc')
+    invoke_lambda_email_service("michaelsongxx@gmail.com", "Michael", datetime.datetime.now(), 1000)
