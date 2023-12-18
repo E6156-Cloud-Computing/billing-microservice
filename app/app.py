@@ -314,6 +314,6 @@ async def get_billing_info_by_email():
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
-    # CORS(app)
-    # app.run(host='0.0.0.0', debug=True, ssl_context='adhoc')
-    invoke_lambda_email_service("michaelsongxx@gmail.com", "Michael", datetime.datetime.now(), 1000)
+    CORS(app)
+    app.run(host='0.0.0.0', debug=True, ssl_context='adhoc')
+    # invoke_lambda_email_service("michaelsongxx@gmail.com", "Michael", datetime.datetime.now(), 1000)
