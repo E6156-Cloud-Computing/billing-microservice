@@ -294,7 +294,7 @@ def billing_info_api(apt_num):
                     billing_transactions.delete_many({"apartment_id": apt_num})
                 return jsonify({"message": "Billing info deleted successfully"}), 200
             else:
-                return jsonify({"error": "Billing info not found"}), 404
+                return jsonify({"error": f"Billing info for {apt_num} not found"}), 404
 
         except Exception as e:
             return jsonify({"error": str(e)}), 500

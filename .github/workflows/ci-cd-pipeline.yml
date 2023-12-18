@@ -44,7 +44,7 @@ jobs:
           cd ~/dockers
           docker-compose down
           # docker-compose pull
-          docker-compose up --build
+          docker-compose up --d
 
     # - name: Set up ssh key
     #   run: |
