@@ -48,7 +48,20 @@ def invoke_lambda_email_service(recipient_email, recipient_name, due_date, balan
     except ClientError as e:
         print(e.response['Error']['Message'])
     else:
-        print("Email sent!"),
+        print("Email sent!")
+
+@app.route('/api/email/', methods=['POST'])
+def email_api():
+    try:
+        data = request.json
+        recipient_email = data.get('recipient_email')
+        recipient_name = data.get('recipient_name')
+        due_date = data.get('due_date')
+        balance = data.get('balance')
+        invoke_lambda_email_service(recipient_email, recipient_name, due_date, balance)
+        return jsonify({"message": "Email sent successfully"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 def generate_monthly_billing():
     """Generate monthly billing for each apartment based on the billing info stored in the billing_collection, this function will be scheduled to be called every day"""
@@ -97,7 +110,7 @@ def generate_monthly_billing():
 # schedule the monthly generating job to run every day at midnight
 schedule.every().day.at("00:00").do(generate_monthly_billing) # schedule the job to run every day at midnight
 
-@app.route('/api/billing/history/', methods=['GET', 'DELETE'])
+@app.route('/api/billing/history/', methods=['GET', 'DELETE', 'POST'])
 def billing_history_api():
     """ Search transaction history by user email, and delete transaction history by email"""
     if request.method == 'GET':
@@ -127,8 +140,29 @@ def billing_history_api():
 
         except Exception as e:
             return jsonify({"error": str(e)}), 500
+    
+    elif request.method == 'POST':
+        """ Only for testing purpose, insert transaction history into MongoDB """
+        try:
+            data = request.json
+            apartment_id = data.get('apartment_id')
+            rental_price = data.get('rental_price')
+            rentor_name = data.get('rentor_name')
+            payment_date = data.get('payment_date')
+            email = data.get('email')
+            new_entry = {
+                "apartment_id": apartment_id,
+                "rental_price": rental_price,
+                "rentor_name": rentor_name,
+                "payment_date": payment_date,
+                "email": email
+            }
+            billing_history.insert_one(new_entry)
+            return jsonify({"message": "Transaction history inserted successfully"}), 201
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
 
-@app.route('/api/billing/pay_rent/<string:apt_num>', methods=['GET', 'PUT'])
+@app.route('/api/billing/pay_rent/<string:apt_num>', methods=['GET', 'PUT', 'POST', 'DELETE'])
 def transaction_api(apt_num):
     if request.method == 'GET':
         """Get billing status from MongoDB by apartment id"""
@@ -194,7 +228,39 @@ def transaction_api(apt_num):
             return jsonify({"message": "Transaction info updated successfully"}), 200
         except Exception as e:
             return jsonify({"error": str(e)}), 500
-
+    
+    elif request.method == "POST":
+        """ Only for front-end testing purpose! Never use this method in production! """
+        try:
+            data = request.json
+            if billing_transactions.find_one({"apartment_id": apt_num}, {"status": "unpaid"}):
+                return jsonify({"error": f"transaction info of {apt_num} already exists, please use PUT method to update"}), 400
+            apartment_id = apt_num
+            rental_price = data.get('rental_price')
+            rentor_name = data.get('rentor_name')
+            due_date = datetime.datetime.now() + datetime.timedelta(days=30)
+            payment_deadline = due_date + datetime.timedelta(days=7)
+            status = data.get('status')
+            email = data.get('email')
+            new_entry = {  
+                "apartment_id": apartment_id,
+                "rental_price": rental_price,
+                "rentor_name": rentor_name,
+                "due_date": due_date,
+                "payment_deadline": payment_deadline,
+                "status": status,
+                "email": email
+            }
+            billing_transactions.insert_one(new_entry)
+            return jsonify({"message": "Transaction info inserted successfully"}), 201
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+    elif request.method == "DELETE":
+        if billing_transactions.find_one({"apartment_id": apt_num}):
+            billing_transactions.delete_one({"apartment_id": apt_num})
+            return jsonify({"message": "Transaction info deleted successfully"}), 200
+        else:
+            return jsonify({"error": "Transaction info not found"}), 404
 
 @app.route('/api/billing/apt/<string:apt_num>', methods=['POST', 'GET', 'PUT', 'DELETE'])
 def billing_info_api(apt_num):
